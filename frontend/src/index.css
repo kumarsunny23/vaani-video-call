@@ -1,0 +1,86 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+/* ─── CSS Variables ─────────────────────────────────────────── */
+:root {
+  --clr-bg:        #07080f;
+  --clr-bg2:       #0d0f1e;
+  --clr-surface:   rgba(255,255,255,0.05);
+  --clr-surface2:  rgba(255,255,255,0.08);
+  --clr-border:    rgba(255,255,255,0.10);
+  --clr-accent:    #FF9839;
+  --clr-accent2:   #e07820;
+  --clr-purple:    #7c5fe6;
+  --clr-blue:      #3b6cf8;
+  --clr-text:      #f0f0f8;
+  --clr-muted:     rgba(240,240,248,0.55);
+  --radius-sm:     10px;
+  --radius-md:     18px;
+  --radius-lg:     28px;
+  --shadow-glow:   0 0 40px rgba(255,152,57,0.18);
+  --transition:    all 0.25s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* ─── Reset & Base ───────────────────────────────────────────── */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', 'Outfit', sans-serif;
+  background: var(--clr-bg);
+  color: var(--clr-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Animated gradient background mesh */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 50% at 20% 10%, rgba(124,95,230,0.14) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 80% 85%, rgba(255,152,57,0.10) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 60% at 60% 40%, rgba(59,108,248,0.08) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ensure page content is above the mesh */
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--clr-bg2);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--clr-accent);
+  border-radius: 99px;
+}
