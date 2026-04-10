@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useContext } from 'react'
 import io from "socket.io-client";
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { Badge, IconButton, TextField, Tooltip } from '@mui/material';
 import { Button } from '@mui/material';
 import VideocamIcon from '@mui/icons-material/Videocam';
@@ -17,6 +17,7 @@ import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import StopIcon from '@mui/icons-material/Stop';
 import DownloadIcon from '@mui/icons-material/Download';
 import server from '../environment';
+import { AuthContext } from '../contexts/AuthContext';
 
 const server_url = server;
 
@@ -56,9 +57,17 @@ export default function VideoMeetComponent() {
     const recordedChunksRef = useRef([]);
 
     const { url: encodedUrl } = useParams();
+    const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
+    const { validateGuestToken } = useContext(AuthContext);
+
     const roomKeyRef = useRef("");
     try { roomKeyRef.current = atob(encodedUrl); }
     catch { roomKeyRef.current = encodedUrl; }
+
+    // ── Guest auth state ───────────────────────
+    const [authStatus, setAuthStatus] = useState('checking'); // 'checking' | 'authorized' | 'unauthorized'
+    const [authError, setAuthError]   = useState('');
 
     // ── Media state ────────────────────────────
     const [videoAvailable, setVideoAvailable]   = useState(false);
@@ -94,8 +103,47 @@ export default function VideoMeetComponent() {
 
     const chatBottomRef = useRef(null);
 
+    // ── Guest token validation on mount ────────
+    useEffect(() => {
+        const checkAuth = async () => {
+            const guestToken = searchParams.get('guestToken');
+            const userToken = localStorage.getItem('token');
+
+            // Case 1: Logged-in user — always allowed
+            if (userToken) {
+                setAuthStatus('authorized');
+                return;
+            }
+
+            // Case 2: Guest with token — validate it
+            if (guestToken) {
+                try {
+                    const result = await validateGuestToken(guestToken, roomKeyRef.current);
+                    if (result.valid) {
+                        setAuthStatus('authorized');
+                    } else {
+                        setAuthStatus('unauthorized');
+                        setAuthError(result.message || 'Invalid or expired invite link.');
+                    }
+                } catch (err) {
+                    console.error('Guest token validation error:', err);
+                    setAuthStatus('unauthorized');
+                    setAuthError('Could not validate invite link. Please try again.');
+                }
+                return;
+            }
+
+            // Case 3: No token at all — unauthorized
+            setAuthStatus('unauthorized');
+            setAuthError('You need an invite link or login to join this meeting.');
+        };
+
+        checkAuth();
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
     // ── Permissions ────────────────────────────
     useEffect(() => {
+        if (authStatus !== 'authorized') return;
         if (permissionsInitialized.current) return;
         permissionsInitialized.current = true;
 
@@ -123,7 +171,7 @@ export default function VideoMeetComponent() {
             }
         };
         getPermissions();
-    }, []);
+    }, [authStatus]);
 
     // ── Auto-scroll chat ───────────────────────
     useEffect(() => {
@@ -232,7 +280,7 @@ export default function VideoMeetComponent() {
 
         Object.entries(connectionsRef.current).forEach(([id, conn]) => {
             if (id === socketIdRef.current) return;
-            conn.addStream(window.localStream);
+            window.localStream.getTracks().forEach(track => conn.addTrack(track, window.localStream));
             conn.createOffer()
                 .then(desc => conn.setLocalDescription(desc))
                 .then(() => socketRef.current?.emit('signal', id,
@@ -248,7 +296,7 @@ export default function VideoMeetComponent() {
                 window.localStream = blackSilence();
                 if (localVideoRef.current) localVideoRef.current.srcObject = window.localStream;
                 Object.entries(connectionsRef.current).forEach(([id, conn]) => {
-                    conn.addStream(window.localStream);
+                    window.localStream.getTracks().forEach(track => conn.addTrack(track, window.localStream));
                     conn.createOffer()
                         .then(desc => conn.setLocalDescription(desc))
                         .then(() => socketRef.current?.emit('signal', id,
@@ -281,7 +329,7 @@ export default function VideoMeetComponent() {
 
         Object.entries(connectionsRef.current).forEach(([id, conn]) => {
             if (id === socketIdRef.current) return;
-            conn.addStream(window.localStream);
+            window.localStream.getTracks().forEach(track => conn.addTrack(track, window.localStream));
             conn.createOffer()
                 .then(desc => conn.setLocalDescription(desc))
                 .then(() => socketRef.current?.emit('signal', id,
@@ -383,12 +431,15 @@ export default function VideoMeetComponent() {
                         }
                     };
 
-                    conn.onaddstream = (event) => {
+                    // ontrack replaces deprecated onaddstream — fires per track, stream via event.streams[0]
+                    conn.ontrack = (event) => {
+                        const stream = event.streams[0];
+                        if (!stream) return;
                         const exists = videoRef.current.find(v => v.socketId === socketListId);
                         if (exists) {
                             setVideos(prev => {
                                 const updated = prev.map(v =>
-                                    v.socketId === socketListId ? { ...v, stream: event.stream } : v
+                                    v.socketId === socketListId ? { ...v, stream } : v
                                 );
                                 videoRef.current = updated;
                                 return updated;
@@ -396,7 +447,7 @@ export default function VideoMeetComponent() {
                         } else {
                             const newVideo = {
                                 socketId: socketListId,
-                                stream: event.stream,
+                                stream,
                                 autoplay: true,
                                 playsinline: true
                             };
@@ -410,13 +461,14 @@ export default function VideoMeetComponent() {
 
                     const localStream = window.localStream ?? blackSilence();
                     if (!window.localStream) window.localStream = localStream;
-                    conn.addStream(localStream);
+                    // addTrack replaces deprecated addStream
+                    localStream.getTracks().forEach(track => conn.addTrack(track, localStream));
                 });
 
                 if (id === socketIdRef.current) {
                     Object.entries(connectionsRef.current).forEach(([id2, conn]) => {
                         if (id2 === socketIdRef.current) return;
-                        try { conn.addStream(window.localStream); } catch {}
+                        try { window.localStream?.getTracks().forEach(track => conn.addTrack(track, window.localStream)); } catch {}
                         conn.createOffer()
                             .then(desc => conn.setLocalDescription(desc))
                             .then(() => socketRef.current?.emit('signal', id2,
@@ -486,8 +538,104 @@ export default function VideoMeetComponent() {
     return (
         <div>
 
+            {/* ── CHECKING AUTH ── */}
+            {authStatus === 'checking' && (
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100vh',
+                    background: 'linear-gradient(145deg, #030d12, #0a1628)',
+                    color: '#fff',
+                    fontFamily: "'Inter', system-ui, sans-serif",
+                    gap: '20px',
+                }}>
+                    <div style={{
+                        width: '48px',
+                        height: '48px',
+                        border: '3px solid rgba(20,200,100,0.2)',
+                        borderTopColor: '#14c864',
+                        borderRadius: '50%',
+                        animation: 'spin 0.8s linear infinite',
+                    }} />
+                    <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+                    <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '1rem' }}>Verifying access...</p>
+                </div>
+            )}
+
+            {/* ── UNAUTHORIZED ── */}
+            {authStatus === 'unauthorized' && (
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100vh',
+                    background: 'linear-gradient(145deg, #030d12, #1a0a0a)',
+                    color: '#fff',
+                    fontFamily: "'Inter', system-ui, sans-serif",
+                    gap: '16px',
+                    padding: '2rem',
+                    textAlign: 'center',
+                }}>
+                    <div style={{
+                        width: '80px',
+                        height: '80px',
+                        borderRadius: '50%',
+                        background: 'rgba(255,60,60,0.12)',
+                        border: '2px solid rgba(255,60,60,0.3)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '2rem',
+                        marginBottom: '8px',
+                    }}>🚫</div>
+                    <h2 style={{
+                        fontSize: '1.6rem',
+                        fontWeight: 700,
+                        color: '#ff4c4c',
+                        margin: 0,
+                    }}>Unauthorized Access</h2>
+                    <p style={{
+                        color: 'rgba(255,255,255,0.55)',
+                        fontSize: '0.95rem',
+                        maxWidth: '420px',
+                        lineHeight: 1.6,
+                    }}>{authError}</p>
+                    <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
+                        <Button
+                            variant="contained"
+                            onClick={() => navigate('/auth')}
+                            sx={{
+                                background: 'linear-gradient(135deg, #14c864, #0a9048)',
+                                borderRadius: '10px',
+                                fontWeight: 700,
+                                textTransform: 'none',
+                                padding: '10px 28px',
+                            }}
+                        >Login</Button>
+                        <Button
+                            variant="outlined"
+                            onClick={() => navigate('/')}
+                            sx={{
+                                borderColor: 'rgba(255,255,255,0.2)',
+                                color: 'rgba(255,255,255,0.6)',
+                                borderRadius: '10px',
+                                textTransform: 'none',
+                                padding: '10px 28px',
+                                '&:hover': {
+                                    borderColor: 'rgba(255,255,255,0.4)',
+                                    background: 'rgba(255,255,255,0.05)',
+                                }
+                            }}
+                        >Go Home</Button>
+                    </div>
+                </div>
+            )}
+
             {/* ── LOBBY ── */}
-            {askForUsername ? (
+            {authStatus === 'authorized' && askForUsername ? (
                 <div className={styles.lobbyContainer}>
                     <div className={styles.lobbyPreview}>
                         <video ref={localVideoRef} autoPlay muted />
@@ -523,7 +671,7 @@ export default function VideoMeetComponent() {
                         </div>
                     </div>
                 </div>
-            ) : (
+            ) : authStatus === 'authorized' ? (
 
                 /* ── MEETING ── */
                 <div className={styles.meetVideoContainer}>
@@ -825,7 +973,7 @@ export default function VideoMeetComponent() {
                     </div>
 
                 </div>
-            )}
+            ) : null}
         </div>
     );
 }

@@ -251,7 +251,7 @@ export default function LandingPage() {
         {/* Desktop nav */}
         {!isMobile && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <NavBtn onClick={() => router('/aljk23')} t={t}>Join as Guest</NavBtn>
+            <NavBtn onClick={() => router('/auth')} t={t}>Login</NavBtn>
             <NavBtn onClick={() => router('/auth')} t={t}>Register</NavBtn>
 
             {/* Theme Switch pill */}
@@ -349,7 +349,7 @@ export default function LandingPage() {
         }}>
           <style>{`@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}`}</style>
           {[
-            { label: 'Join as Guest', path: '/aljk23' },
+            { label: 'Login', path: '/auth' },
             { label: 'Register', path: '/auth' },
           ].map(item => (
             <button key={item.label} onClick={() => { router(item.path); setMenuOpen(false) }}

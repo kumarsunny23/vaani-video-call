@@ -11,6 +11,10 @@ const client = axios.create({
     baseURL: `${server}/api/v1/users`
 })
 
+const guestClient = axios.create({
+    baseURL: `${server}/api/v1/guest`
+})
+
 
 export const AuthProvider = ({ children }) => {
 
@@ -58,6 +62,23 @@ export const AuthProvider = ({ children }) => {
         }
     }
 
+    const handleGoogleAuth = async (name, username, uid) => {
+        try {
+            let request = await client.post("/google-login", {
+                name: name,
+                username: username,
+                uid: uid
+            });
+
+            if (request.status === httpStatus.OK) {
+                localStorage.setItem("token", request.data.token);
+                router("/home");
+            }
+        } catch (err) {
+            throw err;
+        }
+    }
+
     const getHistoryOfUser = async () => {
         try {
             let request = await client.get("/get_all_activity", {
@@ -84,9 +105,50 @@ export const AuthProvider = ({ children }) => {
         }
     }
 
+    /**
+     * Generate a guest invite token for a specific room.
+     * Returns { guestToken, expiresIn, roomId }
+     */
+    const generateGuestInvite = async (roomId) => {
+        try {
+            const userToken = localStorage.getItem("token");
+            if (!userToken) {
+                throw new Error("You must be logged in to generate guest invites");
+            }
+            const request = await guestClient.post("/generate", {
+                roomId: roomId,
+                token: userToken,
+            });
+            return request.data;
+        } catch (e) {
+            throw e;
+        }
+    }
+
+    /**
+     * Validate a guest token for a specific room.
+     * Returns { valid, message, roomId }
+     */
+    const validateGuestToken = async (guestToken, roomId) => {
+        try {
+            const request = await guestClient.post("/validate", {
+                guestToken: guestToken,
+                roomId: roomId,
+            });
+            return request.data;
+        } catch (e) {
+            // Return the error response data if available
+            if (e.response && e.response.data) {
+                return e.response.data;
+            }
+            throw e;
+        }
+    }
+
 
     const data = {
-        userData, setUserData, addToUserHistory, getHistoryOfUser, handleRegister, handleLogin
+        userData, setUserData, addToUserHistory, getHistoryOfUser,
+        handleRegister, handleLogin, handleGoogleAuth, generateGuestInvite, validateGuestToken
     }
 
     return (
@@ -96,3 +158,4 @@ export const AuthProvider = ({ children }) => {
     )
 
 }
+

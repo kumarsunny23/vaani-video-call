@@ -24,8 +24,10 @@ export const connectToSocket = (server) => {
 
             timeOnline[socket.id] = new Date();
 
+            // Send only socket ID strings — frontend needs plain IDs, not objects
+            const participantIds = connections[path].map(p => p.id);
             for (let a = 0; a < connections[path].length; a++) {
-                io.to(connections[path][a].id).emit("user-joined", socket.id, connections[path], name);
+                io.to(connections[path][a].id).emit("user-joined", socket.id, participantIds);
             }
 
             // FIX 4: condition was inverted (=== undefined instead of !== undefined)
