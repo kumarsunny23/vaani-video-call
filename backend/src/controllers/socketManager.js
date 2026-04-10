@@ -69,15 +69,52 @@ export const connectToSocket = (server) => {
                     "socket-id-sender": socket.id,
                 });
 
-                // FIX 5: console.log used undefined `key` variable → matchingRoom
                 console.log("message", matchingRoom, ":", sender, data);
 
-                // FIX 6: io.to(emit(...)) → io.to(elem).emit(...)
                 connections[matchingRoom].forEach((p) => {
                     io.to(p.id).emit("chat-message", data, sender, socket.id);
                 });
             }
         });
+
+        // ── Helper: find the room a socket belongs to ──────────────────
+        const findRoom = () => {
+            for (const [roomKey, participants] of Object.entries(connections)) {
+                if (participants.find(p => p.id === socket.id)) return [roomKey, participants];
+            }
+            return [null, []];
+        };
+
+        // ── Relay: raise hand ──────────────────────────────────────────
+        socket.on("hand-raised", (socketId, username) => {
+            const [, participants] = findRoom();
+            participants.forEach(p => {
+                if (p.id !== socket.id) {
+                    io.to(p.id).emit("hand-raised", socketId, username);
+                }
+            });
+        });
+
+        // ── Relay: emoji reaction ──────────────────────────────────────
+        socket.on("reaction", (emoji, socketId) => {
+            const [, participants] = findRoom();
+            participants.forEach(p => {
+                if (p.id !== socket.id) {
+                    io.to(p.id).emit("reaction", emoji, socketId);
+                }
+            });
+        });
+
+        // ── Relay: user display name label ─────────────────────────────
+        socket.on("user-label", (socketId, username) => {
+            const [, participants] = findRoom();
+            participants.forEach(p => {
+                if (p.id !== socket.id) {
+                    io.to(p.id).emit("user-label", socketId, username);
+                }
+            });
+        });
+
 
         socket.on("disconnect", () => {
             var diffTime = Math.abs(timeOnline[socket.id] - new Date());

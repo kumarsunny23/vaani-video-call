@@ -421,6 +421,11 @@ export default function VideoMeetComponent() {
 
             socketRef.current.on('user-joined', (id, clients) => {
                 clients.forEach(socketListId => {
+                    // Skip self — no need to set up a peer connection with yourself
+                    if (socketListId === socketIdRef.current) return;
+                    // Skip if already connected to this peer
+                    if (connectionsRef.current[socketListId]) return;
+
                     const conn = new RTCPeerConnection(peerConfigConnections);
                     connectionsRef.current[socketListId] = conn;
 
